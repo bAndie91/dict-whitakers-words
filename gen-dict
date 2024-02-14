@@ -1,0 +1,44 @@
+#!/usr/bin/env perl
+
+use Data::Dumper;
+
+$ok = 0;
+$total = $ARGV[0];
+$words_exe = $ARGV[1];
+
+while(my $headword = <STDIN>)
+{
+	$headword =~ s/\s*$//;
+	next if $headword =~ /^-?$/;
+	
+	print "$headword\n";
+	
+	$ENV{'headword'} = $headword;
+	open my $fh, '-|', "sh", "-c", "stdbuf -oL $words_exe ".'$headword'." </dev/null";
+	
+	my $translation_num = 1;
+	while(my $defline = <$fh>)
+	{
+		chomp $defline;
+		if($defline =~ /\[[A-Z]+\]/)
+		{
+			print "\t\n" if $translation_num > 1;
+			my $dictform = $defline;
+			print "\t$dictform\n";
+			$translation_num = 1;
+		}
+		else
+		{
+			print "\t\n";
+			for my $translation (split /\s*;\s*/, $defline)
+			{
+				print "\t$translation_num. $translation\n";
+				$translation_num++;
+			}
+		}
+	}
+	close $fh;
+	
+	$ok++;
+	print STDERR "\x1B[k$0: $ok/$total\r";
+}
