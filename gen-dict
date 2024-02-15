@@ -2,43 +2,55 @@
 
 use Data::Dumper;
 
-$ok = 0;
-$total = $ARGV[0];
+$done = 0;
+my $total = 0;
+$inputfile = $ARGV[0];
 $words_exe = $ARGV[1];
 
-while(my $headword = <STDIN>)
+close STDIN;
+open my $input_fh, '<', $inputfile or die;
+$total++ while <$input_fh>;
+seek $input_fh, 0, 0;
+my $t0 = time;
+
+while(my $headword = <$input_fh>)
 {
 	$headword =~ s/\s*$//;
-	next if $headword =~ /^-?$/;
-	
-	print "$headword\n";
-	
-	$ENV{'headword'} = $headword;
-	open my $fh, '-|', "sh", "-c", "stdbuf -oL $words_exe ".'$headword'." </dev/null";
-	
-	my $translation_num = 1;
-	while(my $defline = <$fh>)
+	unless($headword =~ /^-?$/)
 	{
-		chomp $defline;
-		if($defline =~ /\[[A-Z]+\]/)
+		open my $fh, '-|', $words_exe, $headword;
+		
+		my $translation_num;
+		while(my $defline = <$fh>)
 		{
-			print "\t\n" if $translation_num > 1;
-			my $dictform = $defline;
-			print "\t$dictform\n";
-			$translation_num = 1;
-		}
-		else
-		{
-			print "\t\n";
-			for my $translation (split /\s*;\s*/, $defline)
+			chomp $defline;
+			next if $defline =~ /^\s*$/;
+			
+			if($defline =~ /\[[A-Z]+\]/)
 			{
-				print "\t$translation_num. $translation\n";
-				$translation_num++;
+				print "$headword\n";
+				my $dictform = $defline;
+				print "\t$dictform\n";
+				$translation_num = 1;
+			}
+			else
+			{
+				for my $translation (split /\s*;\s*/, $defline)
+				{
+					print "\t\n" if $translation_num == 1;
+					print "\t$translation_num. $translation\n";
+					$translation_num++;
+				}
 			}
 		}
+		close $fh;
 	}
-	close $fh;
 	
-	$ok++;
-	print STDERR "\x1B[k$0: $ok/$total\r";
+	$done++;
+	my $t = time;
+	my $minutes = ($t - $t0)/60;
+	my $eta = ($minutes*$total/$done) - $minutes;
+	printf STDERR "\x1B[K%s: %d/%d - %d%%, %dh %dm passed, ETA %dh %dm\r", $0, $done, $total, $done*100/$total, $minutes/60, $minutes % 60, $eta/60, $eta % 60;
 }
+
+print STDERR "\n";
