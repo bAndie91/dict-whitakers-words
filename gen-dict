@@ -21,8 +21,6 @@ while(my $headword = <$input_fh>)
 		open my $fh, '-|', @words_cmd, $headword;
 		
 		my $translation_num;
-		my $age;
-		my $frequency;
 		
 		while(my $defline = <$fh>)
 		{
@@ -30,6 +28,9 @@ while(my $headword = <$input_fh>)
 			next if $defline =~ /^\s*$/;
 			next if $defline =~ /========   UNKNOWN/;
 			goto HEADWORD_DONE if $defline =~ /May be 2 words combined.*If not obvious, probably incorrect/;
+			next if $defline =~ /^not \(introducing negative clause/;
+			next if $defline =~ /^PACKON/;
+			next if $defline =~ /^TACKON/;
 			
 			if($defline =~ /^(.+)(\[[A-Z]{5}\])(.+)$/)
 			{
@@ -37,11 +38,8 @@ while(my $headword = <$input_fh>)
 				$flags =~ /\[(?'age'.)(.)(.)(?'frequency'.)(.)/;
 				my ($age_flag, $frequency_flag) = ($+{'age'}, $+{'freq'});
 				
-				# the previous headword's age and frequency:
-				if($age or $frequency) { print "\t\n"; }
-				if($age) { print "\tage: $age\n"; }
-				if($frequency) { print "\tfrequency: $frequency\n"; }
-				$age = $frequency = undef;
+				my $age;
+				my $frequency;
 				
 				if($age_flag ne 'X') { $post_flags =~ s/^(  \S*  )(\S+)/$1/; $age = $2; }
 				if($frequency_flag ne 'X') { $post_flags =~ s/^(  \S*  \S*  )(\S+)/$1/; $frequency = $2; }
@@ -49,6 +47,9 @@ while(my $headword = <$input_fh>)
 				print "$headword\n";
 				my $dictform = "$pre_flags$flags$post_flags";
 				print "\t$dictform\n";
+				if($age or $frequency) { print "\t\n"; }
+				if($age) { print "\tage: $age\n"; }
+				if($frequency) { print "\tfrequency: $frequency\n"; }
 				
 				$translation_num = 1;
 			}
