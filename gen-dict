@@ -4,8 +4,8 @@ use Data::Dumper;
 
 $done = 0;
 my $total = 0;
-$inputfile = $ARGV[0];
-$words_exe = $ARGV[1];
+$inputfile = shift @ARGV;
+@words_cmd = @ARGV;
 
 close STDIN;
 open my $input_fh, '<', $inputfile or die;
@@ -18,23 +18,47 @@ while(my $headword = <$input_fh>)
 	$headword =~ s/\s*$//;
 	unless($headword =~ /^-?$/)
 	{
-		open my $fh, '-|', $words_exe, $headword;
+		open my $fh, '-|', @words_cmd, $headword;
 		
 		my $translation_num;
+		my $age;
+		my $frequency;
+		
 		while(my $defline = <$fh>)
 		{
 			chomp $defline;
 			next if $defline =~ /^\s*$/;
+			next if $defline =~ /========   UNKNOWN/;
+			goto HEADWORD_DONE if $defline =~ /May be 2 words combined.*If not obvious, probably incorrect/;
 			
-			if($defline =~ /\[[A-Z]+\]/)
+			if($defline =~ /^(.+)(\[[A-Z]{5}\])(.+)$/)
 			{
+				my ($pre_flags, $flags, $post_flags) = ($1, $2, $3);
+				$flags =~ /\[(?'age'.)(.)(.)(?'frequency'.)(.)/;
+				my ($age_flag, $frequency_flag) = ($+{'age'}, $+{'freq'});
+				
+				# the previous headword's age and frequency:
+				if($age or $frequency) { print "\t\n"; }
+				if($age) { print "\tage: $age\n"; }
+				if($frequency) { print "\tfrequency: $frequency\n"; }
+				$age = $frequency = undef;
+				
+				if($age_flag ne 'X') { $post_flags =~ s/^(  \S*  )(\S+)/$1/; $age = $2; }
+				if($frequency_flag ne 'X') { $post_flags =~ s/^(  \S*  \S*  )(\S+)/$1/; $frequency = $2; }
+				
 				print "$headword\n";
-				my $dictform = $defline;
+				my $dictform = "$pre_flags$flags$post_flags";
 				print "\t$dictform\n";
+				
 				$translation_num = 1;
 			}
 			else
 			{
+				if(not defined $translation_num)
+				{
+					warn "$0: unexpected line for '$headword': $defline\n";
+					next;
+				}
 				for my $translation (split /\s*;\s*/, $defline)
 				{
 					print "\t\n" if $translation_num == 1;
@@ -43,6 +67,7 @@ while(my $headword = <$input_fh>)
 				}
 			}
 		}
+		HEADWORD_DONE:
 		close $fh;
 	}
 	
