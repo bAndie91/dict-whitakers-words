@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 
 use Data::Dumper;
+use constant { DICTFORM=>0, TRANSLATION=>1, STAT=>2, HEADWORD=>3, };
 
 $done = 0;
 my $total = 0;
@@ -20,7 +21,16 @@ while(my $headword = <$input_fh>)
 	{
 		open my $fh, '-|', @words_cmd, $headword;
 		
+		my $headword_printed = 0;
 		my $translation_num;
+		my $stage;
+		my $prev_stage;
+		my $age1;
+		my $age;
+		my $freq1;
+		my $freq;
+		my $stat_printed;
+		my $last_print;
 		
 		while(my $defline = <$fh>)
 		{
@@ -32,39 +42,92 @@ while(my $headword = <$input_fh>)
 			next if $defline =~ /^PACKON/;
 			next if $defline =~ /^TACKON/;
 			
+			$prev_stage = $stage;
+			
 			if($defline =~ /^(.+)(\[[A-Z]{5}\])(.+)$/)
+				{ $stage = DICTFORM; }
+			else
+				{ $stage = TRANSLATION; }
+			
+			if($stage eq DICTFORM and $prev_stage ne DICTFORM)
+			{
+				$stat_printed = 0;
+				undef $age;
+				undef $age1;
+				undef $freq;
+				undef $freq1;
+			}
+			if(defined $stage and $stage ne DICTFORM and not $stat_printed and ($age or $freq))
+			{
+				print "\t\n";
+				if($age)  { print "\t\tage: $age\n"; }
+				if($freq) { print "\t\tfrequency: $freq\n"; }
+				$stat_printed = 1;
+				$last_print = STAT;
+			}
+			
+			if($stage eq DICTFORM)
 			{
 				my ($pre_flags, $flags, $post_flags) = ($1, $2, $3);
-				$flags =~ /\[(?'age'.)(.)(.)(?'frequency'.)(.)/;
-				my ($age_flag, $frequency_flag) = ($+{'age'}, $+{'freq'});
+				$flags =~ /\[(?'age'.)(.)(.)(?'freq'.)(.)/;
+				my ($age_flag, $freq_flag) = ($+{'age'}, $+{'freq'});
 				
-				my $age;
-				my $frequency;
+				if($age_flag ne 'X')  { $post_flags =~ s/^(  \S*  )(\S+)/$1/; $age = $2; }
+				if($freq_flag ne 'X') { $post_flags =~ s/^(  \S*  \S*  )(\S+)/$1/; $freq = $2; }
 				
-				if($age_flag ne 'X') { $post_flags =~ s/^(  \S*  )(\S+)/$1/; $age = $2; }
-				if($frequency_flag ne 'X') { $post_flags =~ s/^(  \S*  \S*  )(\S+)/$1/; $frequency = $2; }
+				if(not defined $age1)  { $age1 = $age; }
+				if(not defined $freq1) { $freq1 = $freq; }
 				
-				print "$headword\n";
+#				if($prev_stage eq DICTFORM and defined $age and $age1 ne $age) { die $headword; }
+				
+				if(not $headword_printed)
+				{
+					print "$headword\n";
+					$headword_printed = 1;
+					$last_print = HEADWORD;
+				}
+				
+				if(($age1 or $freq1) and ($age1 ne $age or $freq1 ne $freq))
+				{
+					print "\t\n";
+					if($age1)  { print "\t\tage: $age1\n"; }
+					if($freq1) { print "\t\tfrequency: $freq1\n"; }
+					$stat_printed = 1;
+					$age1 = $freq1 = '';  # don't need to show them again but keep them different from the next age and freq
+					$last_print = STAT;
+				}
+				
 				my $dictform = "$pre_flags$flags$post_flags";
+				$dictform =~ s/\s*$//;
+				print "\t\n" if $last_print ne DICTFORM and $last_print ne HEADWORD;
 				print "\t$dictform\n";
-				if($age or $frequency) { print "\t\n"; }
-				if($age) { print "\tage: $age\n"; }
-				if($frequency) { print "\tfrequency: $frequency\n"; }
+				$last_print = DICTFORM;
+
+				if(($age or $freq) and ($age1 ne $age or $freq1 ne $freq))
+				{
+					print "\t\n";
+					if($age)  { print "\t\tage: $age\n"; }
+					if($freq) { print "\t\tfrequency: $freq\n"; }
+					$stat_printed = 1;
+					$last_print = STAT;
+				}
 				
 				$translation_num = 1;
 			}
-			else
+			elsif($stage eq TRANSLATION)
 			{
 				if(not defined $translation_num)
 				{
 					warn "$0: unexpected line for '$headword': $defline\n";
 					next;
 				}
+				$headword_printed = 0;  # make the next artice a separate headword, because its translation likely differs from the current one
 				for my $translation (split /\s*;\s*/, $defline)
 				{
 					print "\t\n" if $translation_num == 1;
 					print "\t$translation_num. $translation\n";
 					$translation_num++;
+					$last_print = TRANSLATION;
 				}
 			}
 		}
